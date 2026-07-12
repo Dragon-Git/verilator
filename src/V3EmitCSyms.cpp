@@ -832,7 +832,10 @@ void EmitCSyms::emitSymHdr() {
             if (!funcp->dpiExportImpl()) continue;
             const std::string cbtype
                 = protect(v3Global.opt.prefix() + "__Vcb_" + funcp->cname() + "_t");
-            const std::string functype = funcp->rtnTypeVoid() + " (*) (" + cFuncArgs(funcp) + ")";
+            // Use VlCoroutine return type if the impl function is a coroutine (has timing)
+            const std::string rtn
+                = funcp->isCoroutine() ? "VlCoroutine" : funcp->rtnTypeVoid();
+            const std::string functype = rtn + " (*) (" + cFuncArgs(funcp) + ")";
             types.emplace("using " + cbtype + " = " + functype + ";\n");
         }
         for (const std::string& type : types) puts(type);
@@ -1472,6 +1475,7 @@ void EmitCSyms::emitDpiImp() {
 
     puts("#include \"" + topClassName() + "__Dpi.h\"\n");
     puts("#include \"" + topClassName() + ".h\"\n");
+    if (v3Global.usesTiming()) puts("#include \"verilated_timing.h\"\n");
     puts("\n");
 
     for (const AstCFunc* const nodep : m_dpis) {

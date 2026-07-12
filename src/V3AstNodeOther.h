@@ -537,6 +537,7 @@ class AstCFunc final : public AstNode {
     bool m_dpiContext : 1;  // Declared as 'context' DPI import/export function
     bool m_dpiExportDispatcher : 1;  // This is the DPI export entry point (i.e.: called by user)
     bool m_dpiExportImpl : 1;  // DPI export implementation (called from DPI dispatcher via lookup)
+    bool m_dpiExportTiming : 1;  // DPI export impl has direct timing controls (dispatcher drives eval)
     bool m_dpiImportPrototype : 1;  // This is the DPI import prototype (i.e.: provided by user)
     bool m_dpiImportWrapper : 1;  // Wrapper for invoking DPI import prototype from generated code
     bool m_needProcess : 1;  // Needs access to VlProcess of the caller
@@ -570,6 +571,7 @@ public:
         m_dpiContext = false;
         m_dpiExportDispatcher = false;
         m_dpiExportImpl = false;
+        m_dpiExportTiming = false;
         m_dpiImportPrototype = false;
         m_dpiImportWrapper = false;
         m_recursive = false;
@@ -641,6 +643,8 @@ public:
     void dpiExportDispatcher(bool flag) { m_dpiExportDispatcher = flag; }
     bool dpiExportImpl() const { return m_dpiExportImpl; }
     void dpiExportImpl(bool flag) { m_dpiExportImpl = flag; }
+    bool dpiExportTiming() const { return m_dpiExportTiming; }
+    void dpiExportTiming(bool flag) { m_dpiExportTiming = flag; }
     bool dpiImportPrototype() const VL_MT_SAFE { return m_dpiImportPrototype; }
     void dpiImportPrototype(bool flag) { m_dpiImportPrototype = flag; }
     bool dpiImportWrapper() const { return m_dpiImportWrapper; }
@@ -1474,6 +1478,9 @@ class AstNetlist final : public AstNode {
     // AstConst itself, as AstConst is a very common node and only a small fraction carry this
     // name.
     std::unordered_map<const AstConst*, string> m_constOrigParamNames;
+    // Trigger scheduler variables (for eventsPending with DPI export timing)
+    std::vector<AstVar*> m_triggerSchedulerps;
+    AstVar* m_dynamicTriggerSchedulerp = nullptr;  // Dynamic trigger scheduler variable
 
 public:
     AstNetlist();
@@ -1505,6 +1512,13 @@ public:
     void dpiExportTriggerp(AstVarScope* varScopep) { m_dpiExportTriggerp = varScopep; }
     AstVar* delaySchedulerp() const { return m_delaySchedulerp; }
     void delaySchedulerp(AstVar* const varScopep) { m_delaySchedulerp = varScopep; }
+    // Trigger scheduler variables (for eventsPending in DPI export timing)
+    void addTriggerSchedulerp(AstVar* const varp) { m_triggerSchedulerps.push_back(varp); }
+    AstVar* triggerSchedulerp(size_t i) const { return m_triggerSchedulerps.at(i); }
+    size_t numTriggerSchedulers() const { return m_triggerSchedulerps.size(); }
+    // Dynamic trigger scheduler variable (for eventsPending in DPI export timing)
+    AstVar* dynamicTriggerSchedulerp() const { return m_dynamicTriggerSchedulerp; }
+    void dynamicTriggerSchedulerp(AstVar* const varp) { m_dynamicTriggerSchedulerp = varp; }
     AstVarScope* nbaEventp() const { return m_nbaEventp; }
     void nbaEventp(AstVarScope* const varScopep) { m_nbaEventp = varScopep; }
     AstVarScope* nbaEventTriggerp() const { return m_nbaEventTriggerp; }

@@ -989,8 +989,17 @@ class TaskVisitor final : public VNVisitor {
             callp->add(new AstVarRef{portp->fileline(), vscp, access});
             return vscp;
         };
+        // Check if the exported task has direct timing controls (AstDelay, AstEventControl,
+        // AstWait exist at this point; V3Timing later converts them to AstCAwait)
+        const bool hasTiming = nodep->exists([](AstDelay*) { return true; })
+                               || nodep->exists([](AstEventControl*) { return true; })
+                               || nodep->exists([](AstWait*) { return true; });
         // Call callback
-        callp->add("(*__Vcb)(");
+        if (hasTiming) {
+            callp->add("VlCoroutine __Vcoro = (*__Vcb)(");
+        } else {
+            callp->add("(*__Vcb)(");
+        }
         // First argument is the Syms
         callp->add("(" + EmitCUtil::symClassName() + "*)(__Vscopep->symsp())");
         // Add function arguments
@@ -1018,6 +1027,30 @@ class TaskVisitor final : public VNVisitor {
         callp->add(");");
         // Call the user function
         funcp->addStmtsp(callp);
+        // If the export has timing controls, drive the eval loop until the coroutine completes
+        if (hasTiming) {
+            AstCStmt* const drivep = new AstCStmt{flp};
+            drivep->add("if (!__Vcoro.await_ready()) {\n");
+            drivep->add("    " + EmitCUtil::symClassName() + "* const __Vsymsp = static_cast<"
+                        + EmitCUtil::symClassName() + "*>(__Vscopep->symsp());\n");
+            drivep->add("    " + EmitCUtil::topClassName()
+                        + "* const __Vtopp = __Vsymsp->__Vm_modelp;\n");
+            drivep->add("    if (VL_UNLIKELY(__Vtopp->contextp()->inEval())) {\n");
+            drivep->add("        VL_FATAL_MT(__FILE__, __LINE__, \"\",\n");
+            drivep->add("                     \"DPI export task with timing controls called from\"\n");
+            drivep->add("                     \" within eval (nested eval not supported)\");\n");
+            drivep->add("    }\n");
+            drivep->add("    const VerilatedScope* const __VsavedScope = Verilated::dpiScope();\n");
+            drivep->add("    while (!__Vcoro.await_ready() && !__Vtopp->contextp()->gotFinish())"
+                        " {\n");
+            drivep->add("        if (!__Vtopp->eventsPending()) break;\n");
+            drivep->add("        __Vtopp->contextp()->time(__Vtopp->nextTimeSlot());\n");
+            drivep->add("        __Vtopp->eval();\n");
+            drivep->add("        Verilated::dpiScope(__VsavedScope);\n");
+            drivep->add("    }\n");
+            drivep->add("}\n");
+            funcp->addStmtsp(drivep);
+        }
         // Convert output/inout arguments back to internal type
         for (AstNode* stmtp = nodep->stmtsp(); stmtp; stmtp = stmtp->nextp()) {
             if (AstVar* const portp = VN_CAST(stmtp, Var)) {
@@ -1344,6 +1377,13 @@ class TaskVisitor final : public VNVisitor {
         cfuncp->funcPublic(nodep->taskPublic());
         cfuncp->dpiContext(nodep->dpiContext());
         cfuncp->dpiExportImpl(nodep->dpiExport());
+        // Mark DPI export impls with direct timing controls so V3Timing allows them
+        if (nodep->dpiExport()) {
+            const bool hasTiming = nodep->exists([](AstDelay*) { return true; })
+                                   || nodep->exists([](AstEventControl*) { return true; })
+                                   || nodep->exists([](AstWait*) { return true; });
+            cfuncp->dpiExportTiming(hasTiming);
+        }
         cfuncp->dpiImportWrapper(nodep->dpiImport());
         cfuncp->recursive(nodep->recursive());
         if (nodep->dpiImport() || nodep->dpiExport()) {

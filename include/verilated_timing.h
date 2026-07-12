@@ -344,6 +344,10 @@ public:
     void doPostUpdates();
     // Resumes all coroutines whose triggers are set (those that co_await resumption())
     void resume();
+    // Are there no coroutines in any queue?
+    bool empty() const {
+        return m_suspended.empty() && m_evaluated.empty() && m_triggered.empty() && m_post.empty();
+    }
 #ifdef VL_DEBUG
     void dump() const;
 #endif

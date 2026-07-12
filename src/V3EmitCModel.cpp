@@ -404,6 +404,9 @@ class EmitCModel final : public EmitCFunc {
         puts("VL_DEBUG_IF(VL_DBG_MSGF(\"+++++TOP Evaluate " + EmitCUtil::topClassName()
              + "::eval_step\\n\"); );\n");
 
+        // Mark that we are inside eval (for nested DPI export detection)
+        puts("contextp()->inEval(true);\n");
+
         puts("#ifdef VL_DEBUG\n");
         putsDecoration(nullptr, "// Debug assertions\n");
         puts(topModNameProtected + "__" + protect("_eval_debug_assertions")
@@ -434,6 +437,9 @@ class EmitCModel final : public EmitCFunc {
         putsDecoration(nullptr, "// Evaluate cleanup\n");
         puts("Verilated::endOfEval(vlSymsp->__Vm_evalMsgQp);\n");
 
+        // No longer inside eval
+        puts("contextp()->inEval(false);\n");
+
         puts("}\n");
     }
 
@@ -457,15 +463,50 @@ class EmitCModel final : public EmitCFunc {
 
         putSectionDelimiter("Events and timing");
         if (auto* const delaySchedp = v3Global.rootp()->delaySchedulerp()) {
-            putns(modp, "bool " + EmitCUtil::topClassName()
-                            + "::eventsPending() { return !vlSymsp->TOP.");
+            putns(modp, "bool " + EmitCUtil::topClassName() + "::eventsPending() {\n");
+            puts("if (contextp()->gotFinish()) return false;\n");
+            puts("if (!vlSymsp->TOP.");
             puts(delaySchedp->nameProtect());
-            puts(".empty() && !contextp()->gotFinish(); }\n\n");
+            puts(".empty()) return true;\n");
+            if (v3Global.usesTiming()) {
+                // Also check trigger schedulers (coroutines waiting on events)
+                for (size_t i = 0; i < v3Global.rootp()->numTriggerSchedulers(); ++i) {
+                    auto* const trigSchedp = v3Global.rootp()->triggerSchedulerp(i);
+                    puts("if (!vlSymsp->TOP.");
+                    puts(trigSchedp->nameProtect());
+                    puts(".empty()) return true;\n");
+                }
+                if (auto* const dynSchedp = v3Global.rootp()->dynamicTriggerSchedulerp()) {
+                    puts("if (!vlSymsp->TOP.");
+                    puts(dynSchedp->nameProtect());
+                    puts(".empty()) return true;\n");
+                }
+            }
+            puts("return false;\n}\n\n");
 
             putns(modp, "uint64_t " + EmitCUtil::topClassName()
                             + "::nextTimeSlot() { return vlSymsp->TOP.");
             puts(delaySchedp->nameProtect());
             puts(".nextTimeSlot(); }\n");
+        } else if (v3Global.usesTiming()) {
+            // Timing is used but no delay scheduler. Check trigger schedulers only.
+            putns(modp, "bool " + EmitCUtil::topClassName() + "::eventsPending() {\n");
+            puts("if (contextp()->gotFinish()) return false;\n");
+            for (size_t i = 0; i < v3Global.rootp()->numTriggerSchedulers(); ++i) {
+                auto* const trigSchedp = v3Global.rootp()->triggerSchedulerp(i);
+                puts("if (!vlSymsp->TOP.");
+                puts(trigSchedp->nameProtect());
+                puts(".empty()) return true;\n");
+            }
+            if (auto* const dynSchedp = v3Global.rootp()->dynamicTriggerSchedulerp()) {
+                puts("if (!vlSymsp->TOP.");
+                puts(dynSchedp->nameProtect());
+                puts(".empty()) return true;\n");
+            }
+            puts("return false;\n}\n\n");
+
+            puts("uint64_t " + EmitCUtil::topClassName() + "::nextTimeSlot() {\n");
+            puts("return contextp()->time() + 1;\n}\n");
         } else {
             putns(modp,
                   "bool " + EmitCUtil::topClassName() + "::eventsPending() { return false; }\n\n");

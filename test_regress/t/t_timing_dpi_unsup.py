@@ -9,9 +9,14 @@
 
 import vltest_bootstrap
 
-test.scenarios('linter')
+test.scenarios('simulator')
 test.top_filename = "t/t_timing_dpi_unsup.v"
 
-test.lint(fails=True, expect_filename=test.golden_filename)
+test.compile(make_top_shell=False,
+             make_main=False,
+             verilator_flags2=["--timing", "--exe", test.pli_filename,
+                               "-Wno-WAITCONST"])
+
+test.execute()
 
 test.passes()

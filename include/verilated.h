@@ -406,6 +406,7 @@ protected:
         bool m_fatalOnVpiError = true;  // Fatal on vpi error/unsupported
         bool m_gotError = false;  // A $finish statement executed
         bool m_gotFinish = false;  // A $finish or $stop statement executed
+        bool m_inEval = false;  // Currently inside an eval() call (nested DPI export detection)
         bool m_quiet = false;  // Quiet, no summary report
         // Slow path
         int8_t m_timeunit;  // Time unit as 0..15
@@ -565,6 +566,10 @@ public:
     bool gotFinish() const VL_MT_SAFE { return m_s.m_gotFinish; }
     /// Set if got a $finish or $stop/error
     void gotFinish(bool flag) VL_MT_SAFE;
+    /// Return if currently inside an eval() call (used to detect nested DPI export calls)
+    bool inEval() const VL_MT_SAFE { return m_s.m_inEval; }
+    /// Set if currently inside an eval() call
+    void inEval(bool flag) VL_MT_SAFE { m_s.m_inEval = flag; }
     /// Check if generated final() code is executing
     bool executingFinal() const VL_MT_SAFE;
     /// Set if generated final() code is executing

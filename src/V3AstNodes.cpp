@@ -2893,6 +2893,8 @@ void AstNetlist::deleteContents() {
     m_evalNbap = nullptr;
     m_dpiExportTriggerp = nullptr;
     m_delaySchedulerp = nullptr;
+    m_triggerSchedulerps.clear();
+    m_dynamicTriggerSchedulerp = nullptr;
     m_nbaEventp = nullptr;
     m_nbaEventTriggerp = nullptr;
     m_topScopep = nullptr;
