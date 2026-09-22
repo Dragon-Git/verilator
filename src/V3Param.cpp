@@ -2559,6 +2559,25 @@ class ParamClassRefDTypeRelinkVisitor final : public VNVisitor {
     void retargetRefDType(AstRefDType* refp) {
         if (!m_ownerModp) return;
 
+        // An explicit qualification that already resolved to a specialization
+        // of a parameterized class (e.g. `driver#(6)::data_t`, giving
+        // cpkg -> 'driver__I6') carries the intended sibling in the reference
+        // itself.  Re-resolving it via the owner's typedef map (which may only
+        // mention a different sibling) would silently rebind it, and the
+        // self-reference check below would also misfire: the `#(...)` of the
+        // scope parses onto the ClassOrPackageRef, so this node's paramsp() is
+        // empty and cannot tell this form from a bare self-reference.  (V3LinkDot
+        // keeps classOrPackageOpp for hasGParam scopes, unresolved until
+        // classRefDeparam points it at the specialization.)  Bare
+        // self-references resolve to the unspecialized template, whose name
+        // still equals its origName.
+        if (const AstClassOrPackageRef* const classRefp
+            = VN_CAST(refp->classOrPackageOpp(), ClassOrPackageRef)) {
+            if (const AstClass* const classp = VN_CAST(classRefp->classOrPackageSkipp(), Class)) {
+                if (classp->name() != classOrigName(classp)) return;
+            }
+        }
+
         // IEEE 1800-2023 8.25.1: a bare class-qualified reference to the class
         // being compiled means the current specialization, but V3LinkDot binds
         // it to the default instance, so a typedef reached through it widens
